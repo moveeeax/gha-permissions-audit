@@ -1,0 +1,15 @@
+# Built binary — anchored to the repo root so it never shadows cmd/ sources.
+/gha-permissions-audit
+/dist/
+
+# Go test artifacts
+/coverage.out
+/*.test
+
+# Editors
+.idea/
+.vscode/
+*.swp
+
+# Fixtures must always be tracked.
+!testdata/**

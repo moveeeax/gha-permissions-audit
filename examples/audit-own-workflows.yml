@@ -1,0 +1,28 @@
+# Drop this into .github/workflows/ to have a repository audit itself on every PR.
+# The report lands in the job summary; the step fails on error-severity findings.
+name: permissions-audit
+
+on:
+  pull_request:
+    paths: [".github/workflows/**"]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23.x"
+      - uses: moveeeax/gha-permissions-audit@v0
+        with:
+          dir: .github/workflows
+          format: markdown
+          fail-on: error
+          # Large legacy repositories usually start here and tighten later:
+          # ignore: no-permissions,unused-write

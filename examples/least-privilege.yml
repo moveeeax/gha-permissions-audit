@@ -1,0 +1,52 @@
+# A workflow that gha-permissions-audit reports zero findings for.
+#
+# Three habits make it clean:
+#   1. A top-level `permissions` block, so no job inherits the repository default.
+#   2. `contents: read` as the floor; nothing is granted write by default.
+#   3. Every extra scope sits on the one job that needs it, not at the top.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23.x"
+      - run: go test ./...
+
+  publish:
+    needs: test
+    runs-on: ubuntu-latest
+    # Only this job can write to the repository, and only because it cuts a release.
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - run: make dist
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+
+  deploy:
+    needs: publish
+    runs-on: ubuntu-latest
+    # OIDC against AWS needs id-token: write and nothing more.
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::123456789012:role/deploy
+          aws-region: eu-central-1
+      - run: ./deploy.sh

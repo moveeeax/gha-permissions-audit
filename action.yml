@@ -1,0 +1,92 @@
+name: gha-permissions-audit
+description: Audit GitHub Actions workflows for GITHUB_TOKEN permission hygiene and print the minimal permissions block
+author: Michael Tarassov
+
+branding:
+  icon: shield
+  color: purple
+
+inputs:
+  dir:
+    description: Workflow directory (or a single workflow file) to audit
+    required: false
+    default: .github/workflows
+  format:
+    description: Output format — table, json or markdown
+    required: false
+    default: markdown
+  min-severity:
+    description: Lowest severity to report — warning or error
+    required: false
+    default: warning
+  fail-on:
+    description: Severity that fails the step — warning, error or never
+    required: false
+    default: error
+  ignore:
+    description: Comma-separated rule ids to suppress
+    required: false
+    default: ""
+  summary:
+    description: Append a markdown report to the job summary
+    required: false
+    default: "true"
+
+outputs:
+  findings:
+    description: Number of findings reported
+    value: ${{ steps.audit.outputs.findings }}
+
+runs:
+  using: composite
+  steps:
+    - name: Build gha-permissions-audit
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      run: |
+        set -euo pipefail
+        go build -o "${RUNNER_TEMP}/gha-permissions-audit" ./cmd/gha-permissions-audit
+
+    - name: Audit workflows
+      id: audit
+      shell: bash
+      env:
+        INPUT_DIR: ${{ inputs.dir }}
+        INPUT_FORMAT: ${{ inputs.format }}
+        INPUT_MIN_SEVERITY: ${{ inputs['min-severity'] }}
+        INPUT_FAIL_ON: ${{ inputs['fail-on'] }}
+        INPUT_IGNORE: ${{ inputs.ignore }}
+        INPUT_SUMMARY: ${{ inputs.summary }}
+      run: |
+        set -euo pipefail
+        bin="${RUNNER_TEMP}/gha-permissions-audit"
+        args=(--dir "$INPUT_DIR" --min-severity "$INPUT_MIN_SEVERITY" --fail-on "$INPUT_FAIL_ON")
+        IFS=',' read -ra ignores <<< "$INPUT_IGNORE"
+        for rule in "${ignores[@]}"; do
+          if [ -n "$rule" ]; then args+=(--ignore "$rule"); fi
+        done
+
+        # The audit exits 1 on findings, which is the whole point. GitHub wraps
+        # composite `run:` in `bash -e`, so drop -e around every invocation
+        # whose non-zero exit we want to record instead of abort on.
+        json="${RUNNER_TEMP}/gha-permissions-audit.json"
+        set +e
+        "$bin" "${args[@]}" --format json --fail-on never > "$json"
+        probe=$?
+        set -e
+        if [ "$probe" -ge 2 ]; then
+          cat "$json"
+          exit "$probe"
+        fi
+        echo "findings=$(jq '.findings | length' "$json")" >> "$GITHUB_OUTPUT"
+
+        report="${RUNNER_TEMP}/gha-permissions-audit.out"
+        set +e
+        "$bin" "${args[@]}" --format "$INPUT_FORMAT" > "$report"
+        code=$?
+        set -e
+        cat "$report"
+        if [ "$INPUT_SUMMARY" = "true" ] && [ "$INPUT_FORMAT" = "markdown" ]; then
+          cat "$report" >> "$GITHUB_STEP_SUMMARY"
+        fi
+        exit "$code"
