@@ -1,7 +1,7 @@
 # gha-permissions-audit
 
 [![ci](https://github.com/moveeeax/gha-permissions-audit/actions/workflows/ci.yml/badge.svg)](https://github.com/moveeeax/gha-permissions-audit/actions/workflows/ci.yml)
-[![go](https://img.shields.io/badge/go-1.22%2B-00ADD8?logo=go&logoColor=white)](https://go.dev)
+[![go](https://img.shields.io/badge/go-1.26%2B-00ADD8?logo=go&logoColor=white)](https://go.dev)
 [![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 Audit GitHub Actions workflows for `GITHUB_TOKEN` permission hygiene, and print the minimal
@@ -31,6 +31,8 @@ Every finding carries the file, job id, rule id, severity and a ready-to-paste `
 computed from the steps that job actually runs.
 
 ## Install
+
+Requires Go 1.26 or newer.
 
 ```sh
 go install github.com/moveeeax/gha-permissions-audit/cmd/gha-permissions-audit@latest
@@ -106,10 +108,10 @@ jobs:
   audit:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
-          go-version: "1.23.x"
+          go-version: "1.27.x"
       - uses: moveeeax/gha-permissions-audit@v0
         with:
           dir: .github/workflows
@@ -126,7 +128,7 @@ with the count.
 
 ## How it works
 
-Workflows are parsed with `gopkg.in/yaml.v3` as a node tree rather than unmarshalled into structs,
+Workflows are parsed with `go.yaml.in/yaml/v3` as a node tree rather than unmarshalled into structs,
 for two reasons. Findings need real line numbers, and the raw scalar text matters: YAML 1.1 resolves
 a bare `on` key to a boolean, so a struct-based parse of `on:` loses the trigger map unless you
 compare `Node.Value` instead of the resolved value.
@@ -158,7 +160,7 @@ go vet ./...
 ```
 
 Fixtures live in `testdata/workflows/`: one clean workflow and one per rule. CI runs on
-`ubuntu-latest` across Go 1.22 and 1.23, and the `self-audit` job runs the tool against this
+`ubuntu-latest` across Go 1.26 and 1.27, and the `self-audit` job runs the tool against this
 repository's own workflows.
 
 ## License
