@@ -12,7 +12,7 @@ import (
 	"github.com/moveeeax/gha-permissions-audit/internal/audit"
 )
 
-const version = "0.1.0"
+const version = "0.2.0"
 
 const usage = `gha-permissions-audit — least-privilege GITHUB_TOKEN auditor
 
