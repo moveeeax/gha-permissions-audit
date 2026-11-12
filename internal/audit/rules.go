@@ -52,6 +52,9 @@ type Options struct {
 	MinSeverity string
 	Ignore      map[string]bool
 	FailOn      string
+	// Mappings add user-defined action and shell-pattern needs on top of the
+	// built-in tables; nil means built-in only.
+	Mappings *Mappings
 }
 
 // Analyze runs every rule over the parsed workflows and returns the findings
@@ -99,8 +102,8 @@ func Analyze(wfs []*Workflow, opt Options) []Finding {
 
 		for _, j := range wf.Jobs {
 			eff := wf.EffectivePerms(j)
-			needs, reasons := JobNeeds(j)
-			block := MinimalBlock(j)
+			needs, reasons := jobNeeds(j, opt.Mappings)
+			block := minimalBlock(j, opt.Mappings)
 
 			if j.Perms.Kind == PermWriteAll {
 				add(Finding{

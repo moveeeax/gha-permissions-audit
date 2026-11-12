@@ -26,6 +26,8 @@ Flags:
   --min-severity LEVEL   warning | error (default "warning")
   --fail-on LEVEL        warning | error | never (default "error")
   --ignore RULE          suppress a rule, repeatable
+  --config PATH          extra action and run mappings (default: read
+                         .github/permissions-audit.yml if it exists)
   --list-rules           print the rule table and exit
   --version              print the version and exit
   -h, --help             print this help and exit
@@ -33,7 +35,7 @@ Flags:
 Exit codes:
   0  no findings at or above --fail-on
   1  findings at or above --fail-on
-  2  a workflow could not be parsed, or the flags were wrong
+  2  a workflow or the config could not be parsed, or the flags were wrong
 `
 
 type stringList []string
@@ -51,6 +53,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	minSeverity := audit.SeverityWarning
 	failOn := audit.SeverityError
 	var ignore stringList
+	configPath := ""
 
 	// Hand-rolled parsing so --ignore can repeat and `--flag=value` and
 	// `--flag value` both work without pulling in a flag library.
@@ -117,6 +120,13 @@ func run(args []string, stdout, stderr io.Writer) int {
 				return 2
 			}
 			ignore.Set(v)
+		case "--config":
+			v, ok := next()
+			if !ok || v == "" {
+				fmt.Fprintln(stderr, "--config needs a value")
+				return 2
+			}
+			configPath = v
 		default:
 			fmt.Fprintf(stderr, "unknown flag %q\n\n%s", a, usage)
 			return 2
@@ -155,6 +165,22 @@ func run(args []string, stdout, stderr io.Writer) int {
 		ignoreSet[r] = true
 	}
 
+	// An explicit --config must exist; the default file is optional and is
+	// looked up relative to the working directory, which in CI is the
+	// repository root.
+	if configPath == "" {
+		configPath = audit.FindConfig(".")
+	}
+	var mappings *audit.Mappings
+	if configPath != "" {
+		m, err := audit.LoadConfig(configPath)
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return 2
+		}
+		mappings = m
+	}
+
 	wfs, err := loadWorkflows(dir)
 	if err != nil {
 		fmt.Fprintln(stderr, err)
@@ -169,6 +195,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		MinSeverity: minSeverity,
 		Ignore:      ignoreSet,
 		FailOn:      failOn,
+		Mappings:    mappings,
 	})
 
 	switch format {

@@ -27,6 +27,10 @@ inputs:
     description: Comma-separated rule ids to suppress
     required: false
     default: ""
+  config:
+    description: Mappings file for in-house actions and run patterns; empty reads .github/permissions-audit.yml when it exists
+    required: false
+    default: ""
   summary:
     description: Append a markdown report to the job summary
     required: false
@@ -57,10 +61,12 @@ runs:
         INPUT_FAIL_ON: ${{ inputs['fail-on'] }}
         INPUT_IGNORE: ${{ inputs.ignore }}
         INPUT_SUMMARY: ${{ inputs.summary }}
+        INPUT_CONFIG: ${{ inputs.config }}
       run: |
         set -euo pipefail
         bin="${RUNNER_TEMP}/gha-permissions-audit"
         args=(--dir "$INPUT_DIR" --min-severity "$INPUT_MIN_SEVERITY" --fail-on "$INPUT_FAIL_ON")
+        if [ -n "$INPUT_CONFIG" ]; then args+=(--config "$INPUT_CONFIG"); fi
         IFS=',' read -ra ignores <<< "$INPUT_IGNORE"
         for rule in "${ignores[@]}"; do
           if [ -n "$rule" ]; then args+=(--ignore "$rule"); fi

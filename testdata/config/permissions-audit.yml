@@ -1,0 +1,8 @@
+# Mappings for in-house actions and scripts the built-in table cannot know.
+mappings:
+  - action: example-org/deploy-action
+    scopes:
+      deployments: write
+  - run: ./scripts/pr-comment.sh
+    scopes:
+      pull-requests: write

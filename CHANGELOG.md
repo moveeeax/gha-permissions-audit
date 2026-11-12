@@ -17,6 +17,10 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- `--config PATH` and the `config` action input: a YAML file of extra
+  `action` and `run` mappings to token scopes, added to the built-in table.
+  `.github/permissions-audit.yml` (or `.yaml`) in the working directory is read
+  automatically when present. Unknown keys, scopes and levels exit with code 2.
 - Dependabot configuration for GitHub Actions and Go modules.
 - This changelog.
 
