@@ -3,6 +3,8 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -128,5 +130,59 @@ func TestMarkdownFormat(t *testing.T) {
 	}
 	if !strings.Contains(out, "## GITHUB_TOKEN permission audit") || !strings.Contains(out, "```yaml") {
 		t.Fatalf("markdown output = %q", out)
+	}
+}
+
+const configFixtures = "../../testdata/config"
+
+func TestConfigFlagClearsUnusedWrite(t *testing.T) {
+	wf := configFixtures + "/in-house.yml"
+	if code, out, _ := cli("--dir", wf, "--fail-on", "warning"); code != 1 || !strings.Contains(out, "unused-write") {
+		t.Fatalf("without config: exit %d\n%s", code, out)
+	}
+	code, out, errOut := cli("--dir", wf, "--fail-on", "warning", "--config", configFixtures+"/permissions-audit.yml")
+	if code != 0 {
+		t.Fatalf("with config: exit %d\n%s%s", code, out, errOut)
+	}
+}
+
+func TestConfigErrorsExitTwo(t *testing.T) {
+	bad := filepath.Join(t.TempDir(), "bad.yml")
+	if err := os.WriteFile(bad, []byte("mappings:\n  - action: a/b\n    scopes:\n      contents: admin\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{
+		{"--dir", fixtures, "--config", bad},
+		{"--dir", fixtures, "--config", configFixtures + "/missing.yml"},
+		{"--dir", fixtures, "--config"},
+	} {
+		if code, _, errOut := cli(args...); code != 2 || errOut == "" {
+			t.Fatalf("%v: exit = %d stderr %q, want 2 and a message", args, code, errOut)
+		}
+	}
+}
+
+func TestDefaultConfigIsReadFromWorkingDirectory(t *testing.T) {
+	wf, err := filepath.Abs(configFixtures + "/in-house.yml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := os.ReadFile(configFixtures + "/permissions-audit.yml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	t.Chdir(root)
+	if code, _, _ := cli("--dir", wf, "--fail-on", "warning"); code != 1 {
+		t.Fatalf("no default config yet: exit %d, want 1", code)
+	}
+	if err := os.MkdirAll(".github", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(".github/permissions-audit.yml", cfg, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if code, out, errOut := cli("--dir", wf, "--fail-on", "warning"); code != 0 {
+		t.Fatalf("default config should be picked up: exit %d\n%s%s", code, out, errOut)
 	}
 }

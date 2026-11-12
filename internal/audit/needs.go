@@ -65,8 +65,11 @@ var runTable = []runRule{
 	{re: regexp.MustCompile(`\bnpm publish\b`), scopes: map[string]string{"packages": "write"}, what: "npm publish"},
 }
 
-// StepNeeds returns the scopes a single step requires.
-func StepNeeds(s Step) []Need {
+// StepNeeds returns the scopes a single step requires per the built-in tables.
+func StepNeeds(s Step) []Need { return stepNeeds(s, nil) }
+
+// stepNeeds is StepNeeds plus the entries of m, which may be nil.
+func stepNeeds(s Step, m *Mappings) []Need {
 	var out []Need
 	if a := s.Action(); a != "" {
 		for _, r := range actionTable {
@@ -82,12 +85,31 @@ func StepNeeds(s Step) []Need {
 		if a == "docker/login-action" && strings.Contains(s.With["registry"], "ghcr.io") {
 			out = append(out, Need{Scope: "packages", Level: "write", Reason: "docker/login-action against ghcr.io"})
 		}
+		if m != nil {
+			for _, r := range m.actions {
+				if r.action != a {
+					continue
+				}
+				for scope, level := range r.scopes {
+					out = append(out, Need{Scope: scope, Level: level, Reason: a + " (config)"})
+				}
+			}
+		}
 	}
 	if s.Run != "" {
 		for _, r := range runTable {
 			if r.re.MatchString(s.Run) {
 				for scope, level := range r.scopes {
 					out = append(out, Need{Scope: scope, Level: level, Reason: r.what})
+				}
+			}
+		}
+		if m != nil {
+			for _, r := range m.runs {
+				if r.re.MatchString(s.Run) {
+					for scope, level := range r.scopes {
+						out = append(out, Need{Scope: scope, Level: level, Reason: r.what + " (config)"})
+					}
 				}
 			}
 		}
@@ -98,11 +120,13 @@ func StepNeeds(s Step) []Need {
 
 // JobNeeds folds every step's needs into one scope -> level map, write winning
 // over read, plus the reason recorded for each scope.
-func JobNeeds(j Job) (map[string]string, map[string]string) {
+func JobNeeds(j Job) (map[string]string, map[string]string) { return jobNeeds(j, nil) }
+
+func jobNeeds(j Job, m *Mappings) (map[string]string, map[string]string) {
 	levels := map[string]string{}
 	reasons := map[string]string{}
 	for _, s := range j.Steps {
-		for _, n := range StepNeeds(s) {
+		for _, n := range stepNeeds(s, m) {
 			if levels[n.Scope] != "write" {
 				levels[n.Scope] = n.Level
 				reasons[n.Scope] = n.Reason
@@ -149,9 +173,11 @@ func releaseSteps(j Job) []string {
 
 // MinimalBlock renders the least-privilege permissions block for a job:
 // contents: read as the floor, plus every scope the steps actually need.
-func MinimalBlock(j Job) string {
+func MinimalBlock(j Job) string { return minimalBlock(j, nil) }
+
+func minimalBlock(j Job, m *Mappings) string {
 	scopes := map[string]string{"contents": "read"}
-	needs, _ := JobNeeds(j)
+	needs, _ := jobNeeds(j, m)
 	for scope, level := range needs {
 		if level == "write" || scopes[scope] == "" {
 			scopes[scope] = level

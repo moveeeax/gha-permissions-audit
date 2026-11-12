@@ -90,10 +90,11 @@ testdata/workflows/release-missing-contents.yml
 | `--min-severity LEVEL` | `warning` | lowest severity to report |
 | `--fail-on LEVEL` | `error` | severity that makes the exit code 1; `never` to always exit 0 |
 | `--ignore RULE` | — | suppress a rule, repeatable |
+| `--config PATH` | `.github/permissions-audit.yml` if present | extra action and `run` mappings, see [Your own mappings](#your-own-mappings) |
 | `--list-rules` | — | print the rule table |
 
-Exit codes: `0` clean, `1` findings at or above `--fail-on`, `2` a workflow could not be parsed or
-the flags were wrong. `--format json` emits `{findings: [...], summary: {...}}` for piping into
+Exit codes: `0` clean, `1` findings at or above `--fail-on`, `2` a workflow or the config file could
+not be parsed, or the flags were wrong. `--format json` emits `{findings: [...], summary: {...}}` for piping into
 `jq`.
 
 ## In CI
@@ -120,7 +121,7 @@ jobs:
 ```
 
 With `format: markdown` the report is appended to the job summary. Action inputs: `dir`, `format`,
-`min-severity`, `fail-on`, `ignore` (comma-separated), `summary`. It exposes a `findings` output
+`min-severity`, `fail-on`, `ignore` (comma-separated), `config`, `summary`. It exposes a `findings` output
 with the count.
 
 `examples/least-privilege.yml` is a workflow this tool reports nothing for;
@@ -147,9 +148,37 @@ become an error-severity finding in somebody's CI.
 `unused-write` is a heuristic, and an honest one: it only knows the actions and shell patterns in
 the table. A job that writes to the repository through `curl` against the REST API, or through an
 action nobody has mapped yet, will be reported as over-granted when it is not. That is why it is a
-warning rather than an error, and why `--ignore unused-write` exists. The three error-severity rules
+warning rather than an error. Map those steps in [your own config](#your-own-mappings), or drop the
+rule with `--ignore unused-write`. The three error-severity rules
 have no such ambiguity — they fire on shapes that either fail at runtime or hand a writable token to
 untrusted code.
+
+## Your own mappings
+
+In-house actions and scripts are the main source of `unused-write` false positives. Describe them in
+`.github/permissions-audit.yml` and the tool reads the file from the working directory (the
+repository root, in CI) on every run; `--config PATH` points somewhere else.
+
+```yaml
+mappings:
+  - action: my-org/deploy-action
+    scopes:
+      deployments: write
+  - run: ./scripts/pr-comment.sh
+    scopes:
+      pull-requests: write
+```
+
+An `action` entry matches the `uses` value without its ref, so `my-org/deploy-action@v2` and
+`@main` both match; writing a ref in the entry is an error. A `run` entry is literal text searched
+for in each step's script, with a word boundary at each end that starts or ends with a letter, digit
+or underscore. Scope names and levels are checked against the `GITHUB_TOKEN` scopes GitHub
+documents, so a typo such as `pull-request: write` fails the run with exit code 2 instead of doing
+nothing.
+
+Mappings add to the built-in table. They raise the needs used by `unused-write` and by the
+suggested block, but cannot lower a built-in entry, and they never make a step count as an OIDC or
+release step for the error-severity rules.
 
 ## Development
 
@@ -159,7 +188,8 @@ gofmt -l .
 go vet ./...
 ```
 
-Fixtures live in `testdata/workflows/`: one clean workflow and one per rule. CI runs on
+Fixtures live in `testdata/workflows/`: one clean workflow and one per rule. `testdata/config/`
+holds a workflow with in-house steps and the mappings file that covers them. CI runs on
 `ubuntu-latest` across Go 1.26 and 1.27, and the `self-audit` job runs the tool against this
 repository's own workflows.
 
